@@ -7,7 +7,7 @@ exports.cssClass = "ace-metabase";
 exports.cssText = "\
 .ace-metabase .ace_gutter {\
 background: rgb(220,236,249);\
-color: #509EE3;\
+color: #394E87;\
 font-weight: bold;\
 }\
 .ace-metabase  {\

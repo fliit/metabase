@@ -30,7 +30,7 @@
 }
 
 .Expression-field {
-  border: 1px solid #509EE3;
+  border: 1px solid #394E87;
   background-color: #C7E3FB;
 }
 
@@ -45,5 +45,5 @@
 .Expression-selected.Expression-field,
 .Expression-selected .Expression-field {
   color: white;
-  background-color: #509EE3;
+  background-color: #394E87;
 }
