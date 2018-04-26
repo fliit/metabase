@@ -5,7 +5,7 @@ type Color = string;
 type ColorFamily = { [name: ColorName]: Color };
 
 export const normal = {
-  blue: "#509EE3",
+  blue: '#394E87',
   green: "#9CC177",
   purple: "#A989C5",
   red: "#EF8C8C",
@@ -17,7 +17,7 @@ export const normal = {
 };
 
 export const saturated = {
-  blue: "#2D86D4",
+  blue: '#274AA7',
   green: "#84BB4C",
   purple: "#885AB1",
   red: "#ED6E6E",
@@ -33,7 +33,7 @@ export const desaturated = {
 };
 
 export const harmony = [
-  "#509ee3",
+  '#394E87',
   "#9cc177",
   "#a989c5",
   "#ef8c8c",

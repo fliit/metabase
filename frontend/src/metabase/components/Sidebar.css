@@ -59,7 +59,7 @@
 :local(.item):hover :local(.icon),
 :local(.sectionTitle):hover {
   background-color: #e3f0f9;
-  color: #2d86d4;
+  color: #274AA7;
 }
 
 :local(.divider) {
@@ -78,7 +78,7 @@
 
 :local(.item):hover :local(.name),
 :local(.item.selected) :local(.name) {
-  color: #2d86d4;
+  color: #274AA7;
 }
 
 :local(.icon) {
