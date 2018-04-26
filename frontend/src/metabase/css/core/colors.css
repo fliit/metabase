@@ -1,7 +1,16 @@
 :root {
-  --brand-color: #509ee3;
-  --brand-light-color: #cde3f8;
-  --brand-saturated-color: #2d86d4;
+/*
+  +Fliit branding
+  +
+  +Dark blue: #151C2F
+  +Dark grey: #6A6D7A
+  +Light Grey: #CFD1D6
+  +Logo red: #C71532
+*/
+
+  --brand-color: #394E87; /*#509EE3;  */
+  --brand-light-color: #98AFEC;/*#CDE3F8;*/
+  --brand-saturated-color: #274AA7; /* #2D86D4;  #6FB0EB -> #5b6fa6*/
 
   --base-grey: #f8f9fa;
   --grey-5percent: color(var(--base-grey) shade(5%));
