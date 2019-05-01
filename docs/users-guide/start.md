@@ -2,7 +2,7 @@
 
 **This guide will teach you:**
 
-*   [What Metabase does](01-what-is-metabase.md)
+*   [An overview of Metabase](01-what-is-metabase.md)
 *   [The basics of database terminology](02-database-basics.md)
 *   [Basic exploration in Metabase](03-basic-exploration.md)
 *   [Asking questions in Metabase](04-asking-questions.md)
@@ -15,5 +15,7 @@
 *   [Get answers in Slack with Metabot](11-metabot.md)
 *   [Some helpful tips on building your data model](12-data-model-reference.md)
 *   [Creating SQL Templates](13-sql-parameters.md)
+*   [Viewing X-ray reports](14-x-rays.md)
+*   [Getting alerts](15-alerts.md)
 
 Let's get started with an overview of [What Metabase does](01-what-is-metabase.md).

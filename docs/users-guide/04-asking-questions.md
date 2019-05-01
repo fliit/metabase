@@ -1,27 +1,89 @@
 
-## Asking questions
+## Asking custom questions
 ---
-Metabase's two core concepts are questions and their corresponding answers. Everything else is based around questions and answers. To ask Metabase a question, click the New Question button at the top of the screen to go to the question builder. (Note: to [create a new SQL query](04-asking-questions.html#using-sql), click the console icon in the top right of the new question screen.)
+Metabase's two core concepts are questions and their corresponding answers. Everything else is based around questions and answers. To ask Metabase a question, click the New Question button at the top of the screen.
+
+### Ways to start a new question
+
+If an administrator has [defined some metrics](../administration-guide/07-segments-and-metrics.md), when you click on the `Ask a question` button in the top bar you'll see a screen like this one:
+
+![New question options](images/new-question-all-options.png)
+
+You can start your new question:
+- from an existing metric
+- from scratch with the Question Builder interface
+- using the SQL / native query editor
+
+Asking a new question about a **metric** is often a great place to start.
+
+#### Asking a new question about a metric
+
+A **metric** is a numeric measurement of something your company wants to track, like revenue, the total number of users, or the number of events that have occurred. So if you have a question like, "how many users have we had in the last 30 days?", then you could start by finding a metric like "Total Users" from your company's list of metrics, and then filtering it down to the time period you care about. Clicking on the metric option will show you a list of your company's metrics:
+
+![List of metrics](images/metrics-list.png)
+
+ Clicking on a metric will show you that number. From there, you can click directly on the number to break it out in interesting ways — like by day, by state, by customer, etc.:
+
+![Metric drill through](images/metric-drill-through.png)
+
+You can also use the Action Menu in the bottom-right of the screen to choose a break out, or to see the table data that the metric uses:
+
+![Metric action menu](images/metric-action-menu.png)
+
+#### Asking a new question about a table
+
+Another quick way to start a new question is by clicking on one of your connected databases at the bottom of the homepage, and picking a table that you have a question about. You'll immediately see the table and the graphical question builder so that you can keep exploring.
+
+![Browse data](./images/browse-data.png)
+
+When viewing a table you can also click on the headings of columns to see options for ways to explore more, like clicking on the Age column of your Users table to see how many Users you have per age group (that's called a "distribution"):
+
+![Table heading actions](images/table-heading-actions.png)
+
+You can also use the Action Menu when viewing a table to see any metrics in it, or to summarize the table.
+
+![Table action menu](images/segment-actions.png)
+
+#### Asking a new custom question
+
+If you have a question that isn't covered by an existing question, you can create a new custom question using the Question Builder interface by clicking "Custom." Or, if you're an advanced user, you can click "SQL" to go straight to the SQL/native query editor.
+
+
+### Using the Question Builder interface
+
+Metabase has a simple graphical question builder that looks like this:
 
 ![queryinterfacebar](images/QueryInterfaceBar.png)
 
-Questions are made up of a number of parts: source data, filters, and answer output.
+The question builder is made up of four distinct sections, from left to right:
+- **Data**, where you pick the source data you want to ask a question about
+- **Filters**, where you can optionally add one or more filters to narrow down your source data
+- **View**, where you choose what you want to see — raw table data, a basic metric, or a "common" metric that an administrator has defined
+- **Groupings**, where you can group or break out your metric by time, location, or other categories
 
-### Source data
+#### Source data
 ---
 All of the data in databases are in tables. Typically, tables will be named for the thing that each row in the table contains. For example, in a Customers table, each row in the table would represent a single customer. This means that when you’re thinking about how to phrase your question, you’ll need to decide what your question is about, and which table has that information in it.
 
 The first dropdown menu in the question builder is where you’ll choose the database and table you want.
 
-#### Using saved questions as source data
+##### Using saved questions as source data
 
 If you've [saved some questions](06-sharing-answers.html), in the Data menu you'll see the option to use one of your saved questions as source data. What this means in practice is that you can do things like use complex SQL queries to create new tables that can be used in a question just like any other table in your database.
 
-You can use any saved question as source data, provided you have [permission](../administration-guide/05-setting-permissions.html) to view that question. You can even use questions that were saved as a chart rather than a table.
+You can use most saved questions as source data, provided you have [permission](../administration-guide/05-setting-permissions.html) to view that question. You can even use questions that were saved as a chart rather than a table.
 
-### Filters
+**Note:** there are some kinds of saved questions that can't be used as source data:
+- BigQuery questions
+- Druid questions
+- Google Analytics questions
+- Mongo questions
+- questions that use `Cumulative Sum` or `Cumulative Count` aggregations
+- questions that have columns that are named the same or similar thing, like `Count` and `Count 2`
+
+#### Filters
 ---
-Filtering your data lets you exclude information that you don’t want. You can filter by any field in the table you're working with, or by any tables that are connected through a foreign key. Filters narrow down the source data to an interesting subset, like "active users" or "bookings after June 15th, 2015."  
+Filtering your data lets you exclude information that you don’t want. You can filter by any field in the table you're working with, or by any tables that are connected through a foreign key. Filters narrow down the source data to an interesting subset, like "active users" or "bookings after June 15th, 2015."
 
 Different fields will have different filter options based on what kind of data type they are. There are four universal filter options, or “operators,” that can be applied to any field. These operators are:
 
@@ -38,33 +100,31 @@ Fields that are comparable, like numbers or dates, can also be filtered using th
 * *Greater than* a value you enter
 * *Between* two values you enter
 
-#### Filtering by dates
+##### Filtering by dates
 
-If filtering by dates, a date picker will appear to allow you to select dates easily. You have two main options for picking your date: relative or specific.
+If filtering by dates, a date picker will appear to allow you to select dates easily, and will default to the previous 30 days.
 
-**Specific Dates**
-This is the most basic way to select dates. You just click on the date you want from the calendar. If you click on a second date, the picker will select all the dates in between the two you clicked on, creating a range. Clicking on any date while you have a range selected will clear the range. You can also use the **All before** and **All after** buttons to quickly select all dates before or after the one you’ve selected.
+Click on the first dropdown to change the kind of date filter you're using. The rest of the popup menu will change depending on this first selection.
 
-**Relative Dates**
-Relative dates are how we more commonly talk about time: “how many customers did we have **last month**?” We talk about time relative to today.
+One important thing to understand when filtering by time or dates like this is the difference between specific and relative dates:
 
-In practice, if you select **Past 30 days** from the Relative Date calendar picker, this would be the same as selecting those same dates from the Specific Date picker — *unless* you save your question and look at it again tomorrow.
+**Specific dates** are things like November 1, 2010, or June 3 – July 12, 2017; they always refer to the same date(s).
 
-Now the relative date will be referencing the past 30 days from *today*, *not* from the day you saved the question. This is a really useful way of creating and saving questions that stay up-to-date: you can always know what your total sales were in the past 7 days, for example.
+**Relative dates** are things like "the past 30 days," or "the current week;" as time passes, the dates these refer to change. Relative dates are a useful way to set up a filter on a question so that it stays up to date by showing you for example how many users visited your website in the last 7 days.
 
-#### Using segments
-If your Metabase admins have created special named filters, called segments, for the table you’re viewing, they’ll appear at the top of the filter dropdown in purple text with a star next to them. These are shortcuts to sets of filters that are commonly used in your organization. They might be something like “Active Users,” or “Most Popular Products.”
+##### Using segments
+If your Metabase administrators have created special named filters for the table you're viewing they’ll appear at the top of the filter dropdown in purple text with a star next to them. These are called "segments," and they're shortcuts to filters that are commonly used in your organization. They might be called things like “Active Users,” or “Most Popular Products.”
 
-### Answer output
+#### Selecting answer output in the View section
 ---
-The last section of the question builder is where you select what you want the output of your answer to be, under the View dropdown. You’re basically telling Metabase, “I want to view the…” Metabase can output the answer to your question in four different ways:
+The next section of the question builder is where you select what you want the output of your answer to be, under the View dropdown. You’re basically telling Metabase, “I want to view…” Metabase can output the answer to your question in four different ways:
 
-#### 1. Raw Data
-Raw Data is just a table with the answer listed in rows.  It's useful when you want to see the actual data you're working with, rather than a sum or average, etc., or when you're exploring a small table with a limited number of records.  
+##### 1. Raw data
+Raw Data is just a table with the answer listed in rows.  It's useful when you want to see the actual data you're working with, rather than a sum or average, etc., or when you're exploring a small table with a limited number of records.
 
 When you filter your data to see groups of interesting users, orders, etc., Raw Data will show you an output of each individual record that matches your question's criteria.
 
-#### 2. Basic Metrics
+##### 2. Basic metrics
 
 What's a *metric*? It's a number that is derived from your source table and takes into consideration any filters you asked Metabase to apply to your question. So when you select one of these metrics, your answer will come back in the form of a number. You can add additional metrics to your question using the `+` icon next to your selected metric.
 
@@ -80,28 +140,26 @@ The different basic metrics are:
 * **Minimum of …:** The minimum value present in the selected field.
 * **Maximum of …:** The maximum value present in the selected field.
 
-#### 3. Common Metrics
+##### 3. Common metrics
 
 If your admins have created any named metrics that are specific to your company or organization, they will be in this dropdown under the **Common Metrics** section. These might be things like your company’s official way of calculating revenue.
 
-#### 4. Custom Expressions
+##### 4. Custom expressions
 Custom expressions allow you to do simple arithmetic within or between aggregation functions. For example, you could do `Average(FieldX) + Sum(FieldY)` or `Max(FieldX - FieldY)`, where `FieldX` and `FieldY` are fields in the currently selected table. You can either use your cursor to select suggested functions and fields, or simply start typing and use the autocomplete. If you are a Metabase administrator, you can now also use custom aggregation expressions when creating defined common metrics in the Admin Panel.
 
 Currently, you can use any of the basic aggregation functions listed in #2 above in your custom expression, and these basic mathematical operators: `+`, `-`, `*` (multiply), `/` (divide). You can also use parentheses to clarify the order of operations.
 
-### Breaking Out Metrics: Add a group
+#### Breaking out metrics: adding a grouping
 ---
-Metrics are great by themselves if the answer you’re looking for is just a simple, single number. But often you'll want to know more detailed information than that.
+Metrics are great by themselves if the answer you’re looking for is just a simple, single number. But often you'll want to know more detailed information than that. For example, the sum of all invoiced amounts is a metric. It's natural to want to look at this metric across time or another grouping, such as whether the invoices are paid or not.
 
-For example, the sum of all invoiced amounts is a metric. It's natural to want to look at this metric across time or another grouping, such as whether the invoices are paid or not.
-
-You can do this by adding a **Group** element to your question. You can break out your answer by any date or time in your table, as well as any category field. These groupings are called *dimensions*.
+You can do this by adding a **Grouping** to your question. You can break out your answer by any date or time in your table, or by any category field. These groupings are called *dimensions*.
 
 If you apply a *single dimension* to your question, you get a table where the leftmost column is the dimension and the rightmost column is the value of the metric for that dimension's value. You can visualize this in several ways, like a line or bar graph, with the value as the y-axis, and the dimension as the x-axis.
 
-*Two dimension* breakouts are equivalent to a pivot table in Excel, and are one of the workhorses of the business intelligence world. For example, we might want to know the how many orders we had per state, and also per month. If we want to try this with the Sample Dataset, we’d open the Orders table, skip the filters, then choose Count, and then add groupings by User:State and Created At: Month. The result is a table where the first row and column have the month and state information, and where the rest of the cells are the number of orders.
+*Two dimension* breakouts are equivalent to a pivot table in Excel, and are one of the workhorses of the business intelligence world. For example, we might want to know how many orders we had per state per month. If we want to try this with the Sample Dataset, we’d open the Orders table, skip the filters, then choose "Count or rows," and then add groupings by User:State and Created At: Month. The result is a table where the first row and column have the month and state information, and where the rest of the cells are the number of orders. (If you don't want your table to be pivoted, you can turn this option off by clicking the gear icon near the top-left of your table.)
 
-If you add more dimensions, you will add columns to the left of the dimension.
+If you add more dimensions, you will add columns to the left of the metric.
 
 ### Additional Options
 ---
@@ -137,11 +195,11 @@ Now we can use this new field just like any other field, meaning we can use it t
 ![Field in dropdown](images/custom-fields/field-in-dropdown.png)
 
 
-### Digging into Individual Records
+### Digging into individual records
 ---
-Click on a record's primary key (or ID) to see more information about a given person, venue, etc. You can see all fields related to that one record and all connected tables that are hidden in the table view for the sake of readability.
+Click on a record's ID number (or primary key) to see more information about a given user, order, venue, etc. You can see all fields related to that one record and all connected tables that are hidden in the table view for the sake of readability. Press the right or left arrow keys, or click on the arrows to the right or left of the screen to page through the other records in the current list.
 
-## Asking more Advanced Questions in SQL
+## Asking more advanced questions in the SQL/native query editor
 ---
 If you ever need to ask questions that can't be expressed using the question builder, you can use **SQL** instead.
 
@@ -152,11 +210,11 @@ SQL (pronounced "sequel") stands for Structured Query Language, and is a widely 
 Even if you don't understand SQL or how to use it, it's worthwhile to understand how to use it inside Metabase because sometimes other people will share SQL-based questions that might be useful to you.
 
 ### Using SQL
-You can switch a card from question builder mode to SQL mode by clicking on the "**>_**" button in the upper right hand corner. (Note: you’ll only see this button on new question pages or on saved questions that were written in SQL. Otherwise, you’ll see the SAVE button there instead.)
+You can switch a card from question builder mode to SQL mode by clicking on the "**>_**" button in the upper right hand corner.
 
 ![sqlbutton](images/SQLButton.png)
 
-You can write SQL directly into the text box that appears.
+You can write SQL (or your database's native querying language) directly into the text box that appears.
 
 ![sqlinterface](images/SQLInterface.png)
 
