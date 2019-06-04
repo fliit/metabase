@@ -25,8 +25,9 @@
     (-> (u/select-non-nil-keys table [:schema :name :fields])
         (update :fields (fn [fields]
                           (for [field fields]
-                            (u/select-non-nil-keys field [:table_id :name :fk_target_field_id :parent_id :base_type
-                                                          :special_type])))))))
+                            (u/select-non-nil-keys
+                             field
+                             [:table_id :name :fk_target_field_id :parent_id :base_type :database_type])))))))
 
 (defn- get-tables [database-or-id]
   (->> (hydrate (db/select Table, :db_id (u/get-id database-or-id), {:order-by [:id]}) :fields)
@@ -40,9 +41,13 @@
     (remove-nonsense (get-tables db))))
 
 
-;;; ------------------------------------------------------------ Tests for sync-metadata ------------------------------------------------------------
+;;; +----------------------------------------------------------------------------------------------------------------+
+;;; |                                            TESTS FOR SYNC METADATA                                             |
+;;; +----------------------------------------------------------------------------------------------------------------+
 
-;; TODO - At some point these tests should be moved into a `sync-metadata-test` or `sync-metadata.fields-test` namespace
+
+;; TODO - At some point these tests should be moved into a `sync-metadata-test` or `sync-metadata.fields-test`
+;; namespace
 
 ;; make sure nested fields get resynced correctly if their parent field didn't change
 (expect
@@ -56,6 +61,7 @@
           details-field-id      (u/get-id (db/select-one-id Field :table_id transactions-table-id, :name "details", :parent_id toucan-field-id))
           age-field-id          (u/get-id (db/select-one-id Field :table_id transactions-table-id, :name "age", :parent_id details-field-id))]
       (db/delete! Field :id age-field-id)
+      (db/update! Table transactions-table-id :fields_hash "something new")
       ;; now sync again.
       (sync-metadata/sync-db-metadata! db)
       ;; field should be added back
@@ -105,13 +111,15 @@
           toucan-field-id       (u/get-id (db/select-one-id Field :table_id transactions-table-id, :name "toucan"))
           details-field-id      (u/get-id (db/select-one-id Field :table_id transactions-table-id, :name "details", :parent_id toucan-field-id))
           gender-field-id       (u/get-id (db/insert! Field
-                                            :name     "gender"
-                                            :base_type "type/Text"
-                                            :table_id transactions-table-id
-                                            :parent_id details-field-id
-                                            :active true))]
+                                            :name          "gender"
+                                            :database_type "VARCHAR"
+                                            :base_type     "type/Text"
+                                            :table_id      transactions-table-id
+                                            :parent_id     details-field-id
+                                            :active        true))]
 
       ;; now sync again.
+      (db/update! Table transactions-table-id :fields_hash "something new")
       (sync-metadata/sync-db-metadata! db)
       ;; field should become inactive
       (db/select-one-field :active Field :id gender-field-id))))
@@ -127,19 +135,22 @@
           toucan-field-id       (u/get-id (db/select-one-id Field :table_id transactions-table-id, :name "toucan"))
           details-field-id      (u/get-id (db/select-one-id Field :table_id transactions-table-id, :name "details", :parent_id toucan-field-id))
           food-likes-field-id   (u/get-id (db/insert! Field
-                                            :name     "food-likes"
-                                            :base_type "type/Dictionary"
-                                            :table_id transactions-table-id
-                                            :parent_id details-field-id
-                                            :active true))
-          blueberries-field-id (u/get-id (db/insert! Field
-                                           :name "blueberries"
-                                           :base_type "type/Boolean"
-                                           :table_id transactions-table-id
-                                           :parent_id food-likes-field-id
-                                           :active true))]
+                                            :name          "food-likes"
+                                            :database_type "OBJECT"
+                                            :base_type     "type/Dictionary"
+                                            :table_id      transactions-table-id
+                                            :parent_id     details-field-id
+                                            :active        true))
+          blueberries-field-id  (u/get-id (db/insert! Field
+                                            :name          "blueberries"
+                                            :database_type "BOOLEAN"
+                                            :base_type     "type/Boolean"
+                                            :table_id      transactions-table-id
+                                            :parent_id     food-likes-field-id
+                                            :active        true))]
 
       ;; now sync again.
+      (db/update! Table transactions-table-id :fields_hash "something new")
       (sync-metadata/sync-db-metadata! db)
       ;; field should become inactive
       (db/select-one-field :active Field :id blueberries-field-id))))

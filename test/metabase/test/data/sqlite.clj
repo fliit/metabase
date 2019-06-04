@@ -4,7 +4,9 @@
              [generic-sql :as generic]
              [interface :as i]]
             [metabase.util :as u]
-            [metabase.util.honeysql-extensions :as hx])
+            [metabase.util
+             [date :as du]
+             [honeysql-extensions :as hx]])
   (:import metabase.driver.sqlite.SQLiteDriver))
 
 (defn- database->connection-details [context dbdef]
@@ -27,9 +29,14 @@
   (fn [rows]
     (insert! (for [row rows]
                (into {} (for [[k v] row]
-                          [k (if-not (instance? java.util.Date v)
-                               v
-                               (hsql/call :datetime (hx/literal (u/date->iso-8601 v))))]))))))
+                          [k (cond
+                               (instance? java.sql.Time v)
+                               (hsql/call :time (hx/literal (du/format-time v "UTC")))
+
+                               (instance? java.util.Date v)
+                               (hsql/call :datetime (hx/literal (du/date->iso-8601 v)))
+
+                               :else v)]))))))
 
 (u/strict-extend SQLiteDriver
   generic/IGenericSQLTestExtensions

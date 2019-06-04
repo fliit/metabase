@@ -1,5 +1,6 @@
 (ns metabase.api.util
-  "Random utilty endpoints for things that don't belong anywhere else in particular, e.g. endpoints for certain admin page tasks."
+  "Random utilty endpoints for things that don't belong anywhere else in particular, e.g. endpoints for certain admin
+  page tasks."
   (:require [compojure.core :refer [GET POST]]
             [crypto.random :as crypto-random]
             [metabase.api.common :as api]
@@ -28,7 +29,7 @@
   (stats/anonymous-usage-stats))
 
 (api/defendpoint GET "/random_token"
-  "Return a cryptographically secure random 32-byte token, encoded as a hexidecimal string.
+  "Return a cryptographically secure random 32-byte token, encoded as a hexadecimal string.
    Intended for use when creating a value for `embedding-secret-key`."
   []
   {:token (crypto-random/hex 32)})

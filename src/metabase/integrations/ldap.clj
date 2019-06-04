@@ -8,6 +8,7 @@
              [setting :as setting :refer [defsetting]]
              [user :as user :refer [User]]]
             [metabase.util :as u]
+            [metabase.util.i18n :refer [tru]]
             [toucan.db :as db])
   (:import [com.unboundid.ldap.sdk LDAPConnectionPool LDAPException]))
 
@@ -15,19 +16,19 @@
   "{login}")
 
 (defsetting ldap-enabled
-  "Enable LDAP authentication."
+  (tru "Enable LDAP authentication.")
   :type    :boolean
   :default false)
 
 (defsetting ldap-host
-  "Server hostname.")
+  (tru "Server hostname."))
 
 (defsetting ldap-port
-  "Server port, usually 389 or 636 if SSL is used."
+  (tru "Server port, usually 389 or 636 if SSL is used.")
   :default "389")
 
 (defsetting ldap-security
-  "Use SSL, TLS or plain text."
+  (tru "Use SSL, TLS or plain text.")
   :default "none"
   :setter  (fn [new-value]
              (when-not (nil? new-value)
@@ -35,41 +36,41 @@
              (setting/set-string! :ldap-security new-value)))
 
 (defsetting ldap-bind-dn
-  "The Distinguished Name to bind as (if any), this user will be used to lookup information about other users.")
+  (tru "The Distinguished Name to bind as (if any), this user will be used to lookup information about other users."))
 
 (defsetting ldap-password
-  "The password to bind with for the lookup user.")
+  (tru "The password to bind with for the lookup user."))
 
 (defsetting ldap-user-base
-  "Search base for users. (Will be searched recursively)")
+  (tru "Search base for users. (Will be searched recursively)"))
 
 (defsetting ldap-user-filter
-  "User lookup filter, the placeholder {login} will be replaced by the user supplied login."
+  (tru "User lookup filter, the placeholder '{login}' will be replaced by the user supplied login.")
   :default "(&(objectClass=inetOrgPerson)(|(uid={login})(mail={login})))")
 
 (defsetting ldap-attribute-email
-  "Attribute to use for the user's email. (usually 'mail', 'email' or 'userPrincipalName')"
+  (tru "Attribute to use for the user's email. (usually ''mail'', ''email'' or ''userPrincipalName'')")
   :default "mail")
 
 (defsetting ldap-attribute-firstname
-  "Attribute to use for the user's first name. (usually 'givenName')"
+  (tru "Attribute to use for the user''s first name. (usually ''givenName'')")
   :default "givenName")
 
 (defsetting ldap-attribute-lastname
-  "Attribute to use for the user's last name. (usually 'sn')"
+  (tru "Attribute to use for the user''s last name. (usually ''sn'')")
   :default "sn")
 
 (defsetting ldap-group-sync
-  "Enable group membership synchronization with LDAP."
+  (tru "Enable group membership synchronization with LDAP.")
   :type    :boolean
   :default false)
 
 (defsetting ldap-group-base
-  "Search base for groups, not required if your LDAP directory provides a 'memberOf' overlay. (Will be searched recursively)")
+  (tru "Search base for groups, not required if your LDAP directory provides a ''memberOf'' overlay. (Will be searched recursively)"))
 
 (defsetting ldap-group-mappings
   ;; Should be in the form: {"cn=Some Group,dc=...": [1, 2, 3]} where keys are LDAP groups and values are lists of MB groups IDs
-  "JSON containing LDAP to Metabase group mappings."
+  (tru "JSON containing LDAP to Metabase group mappings.")
   :type    :json
   :default {})
 
@@ -97,7 +98,7 @@
 (defn- escape-value
   "Escapes a value for use in an LDAP filter expression."
   [value]
-  (str/replace value #"[\*\(\)\\\\0]" (comp (partial format "\\%02X") int first)))
+  (str/replace value #"(?:^\s|\s$|[,\\\#\+<>;\"=\*\(\)\\0])" (comp (partial format "\\%02X") int first)))
 
 (defn- get-connection
   "Connects to LDAP with the currently set settings and returns the connection."
@@ -208,10 +209,10 @@
   "Using the `user-info` (from `find-user`) get the corresponding Metabase user, creating it if necessary."
   [{:keys [first-name last-name email groups]} password]
   (let [user (or (db/select-one [User :id :last_login] :email email)
-             (user/create-new-ldap-auth-user! first-name last-name email password))]
+                 (user/create-new-ldap-auth-user! {:first_name first-name
+                                                   :last_name  last-name
+                                                   :email      email}))]
     (u/prog1 user
-      (when password
-        (user/set-password! (:id user) password))
       (when (ldap-group-sync)
         (let [special-ids #{(:id (group/admin)) (:id (group/all-users))}
               current-ids (set (map :group_id (db/select ['PermissionsGroupMembership :group_id] :user_id (:id user))))

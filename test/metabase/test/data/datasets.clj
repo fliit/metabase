@@ -1,19 +1,28 @@
 (ns metabase.test.data.datasets
-  "Interface + implementations for loading test datasets for different drivers, and getting information about the dataset's tables, fields, etc."
+  "Interface + implementations for loading test datasets for different drivers, and getting information about the
+  dataset's tables, fields, etc.
+
+  TODO - we should seriously rename this namespace to something like `metabase.test.driver` or something like that.
+  Also need to stop using 'engine' to mean 'driver keyword'."
   (:require [clojure.string :as s]
             [clojure.tools.logging :as log]
             [colorize.core :as color]
             [environ.core :refer [env]]
             [expectations :refer [expect]]
-            (metabase [config :as config]
-                      [driver :as driver]
-                      [plugins :as plugins])
-            [metabase.test.data.interface :as i]))
+            [metabase
+             [config :as config]
+             [driver :as driver]
+             [plugins :as plugins]]
+            [metabase.test.data.interface :as i]
+            [metabase.util.date :as du]))
 
-;; When running tests, we need to make sure plugins (i.e., the Oracle JDBC driver) are loaded because otherwise the Oracle driver won't show up in the list of valid drivers below
-(plugins/load-plugins!)
+;; When running tests, we need to make sure plugins (i.e., the Oracle JDBC driver) are loaded because otherwise the
+;; Oracle driver won't show up in the list of valid drivers below
+(du/profile "(plugins/load-plugins!) (in metabase.test.data.datasets)"
+  (plugins/load-plugins!))
 
-(driver/find-and-load-drivers!)
+(du/profile "(driver/find-and-load-drivers!) (in metabase.test.data.datasets)"
+  (driver/find-and-load-drivers!))
 
 (def ^:const all-valid-engines (set (keys (driver/available-drivers))))
 
@@ -73,6 +82,7 @@
   [engine]
   (try (i/engine (driver/engine->driver engine))
        (catch IllegalArgumentException _
+         (println "Reloading test extensions: (require " (engine->test-extensions-ns-symbol engine) ":reload)")
          (require (engine->test-extensions-ns-symbol engine) :reload)))
   (driver/engine->driver engine))
 
@@ -86,6 +96,7 @@
   "Bind `*engine*` and `*driver*` as appropriate for ENGINE and execute F, a function that takes no args."
   {:style/indent 1}
   [engine f]
+  {:pre [(keyword? engine)]}
   (binding [*engine* engine
             *driver* (engine->driver engine)]
     (f)))
@@ -120,7 +131,8 @@
        ~@body)))
 
 (defmacro expect-with-engine
-  "Generate a unit test that only runs if we're currently testing against ENGINE, and that binds `*driver*` to the driver for ENGINE."
+  "Generate a unit test that only runs if we're currently testing against ENGINE, and that binds `*driver*` to the
+  driver for ENGINE."
   {:style/indent 1}
   [engine expected actual]
   `(when-testing-engine ~engine
@@ -129,8 +141,8 @@
        (with-engine ~engine ~actual))))
 
 (defmacro expect-with-engines
-  "Generate unit tests for all datasets in ENGINES; each test will only run if we're currently testing the corresponding dataset.
-   `*driver*` is bound to the current dataset inside each test."
+  "Generate unit tests for all datasets in ENGINES; each test will only run if we're currently testing the
+  corresponding dataset. `*driver*` is bound to the current dataset inside each test."
   {:style/indent 1}
   [engines expected actual]
   ;; Make functions to get expected/actual so the code is only compiled one time instead of for every single driver
@@ -146,14 +158,15 @@
                 (do-with-engine ~engine ~a)))))))
 
 (defmacro expect-with-all-engines
-  "Generate unit tests for all valid datasets; each test will only run if we're currently testing the corresponding dataset.
-  `*driver*` is bound to the current dataset inside each test."
+  "Generate unit tests for all valid datasets; each test will only run if we're currently testing the corresponding
+  dataset. `*driver*` is bound to the current dataset inside each test."
+  {:style/indent 0}
   [expected actual]
   `(expect-with-engines all-valid-engines ~expected ~actual))
 
 
-;;; Load metabase.test.data.* namespaces for all available drivers
-(doseq [engine all-valid-engines]
-  (let [driver-test-namespace (engine->test-extensions-ns-symbol engine)]
-    (when (find-ns driver-test-namespace)
-      (require driver-test-namespace))))
+(du/profile "Load metabase.test.data.* namespaces for all available drivers"
+  (doseq [engine all-valid-engines]
+    (let [driver-test-namespace (engine->test-extensions-ns-symbol engine)]
+      (when (find-ns driver-test-namespace)
+        (require driver-test-namespace)))))

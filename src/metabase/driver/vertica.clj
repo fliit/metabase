@@ -8,12 +8,12 @@
              [util :as u]]
             [metabase.driver.generic-sql :as sql]
             [metabase.util
+             [date :as du]
              [honeysql-extensions :as hx]
              [ssh :as ssh]]))
 
 (def ^:private ^:const column->base-type
-  "Map of Vertica column types -> Field base types.
-   Add more mappings here as you come across them."
+  "Map of Vertica column types -> Field base types. Add more mappings here as you come across them."
   {:Boolean        :type/Boolean
    :Integer        :type/Integer
    :Bigint         :type/BigInteger
@@ -37,10 +37,11 @@
 (defn- connection-details->spec [{:keys [host port db dbname]
                                   :or   {host "localhost", port 5433, db ""}
                                   :as   details}]
-  (merge {:classname   "com.vertica.jdbc.Driver"
-          :subprotocol "vertica"
-          :subname     (str "//" host ":" port "/" (or dbname db))}
-         (dissoc details :host :port :dbname :db :ssl)))
+  (-> (merge {:classname   "com.vertica.jdbc.Driver"
+              :subprotocol "vertica"
+              :subname     (str "//" host ":" port "/" (or dbname db))}
+             (dissoc details :host :port :dbname :db :ssl))
+      (sql/handle-additional-options details)))
 
 (defn- unix-timestamp->timestamp [expr seconds-or-milliseconds]
   (case seconds-or-milliseconds
@@ -48,12 +49,11 @@
     :milliseconds (recur (hx// expr 1000) :seconds)))
 
 (defn- cast-timestamp
-  "Vertica requires stringified timestamps (what
-  Date/DateTime/Timestamps are converted to) to be cast as timestamps
-  before date operations can be performed. This function will add that
-  cast if it is a timestamp, otherwise this is a noop."
+  "Vertica requires stringified timestamps (what Date/DateTime/Timestamps are converted to) to be cast as timestamps
+  before date operations can be performed. This function will add that cast if it is a timestamp, otherwise this is a
+  noop."
   [expr]
-  (if (u/is-temporal? expr)
+  (if (du/is-temporal? expr)
     (hx/cast :timestamp expr)
     expr))
 
@@ -108,8 +108,12 @@
 
 
 (defrecord VerticaDriver []
+  :load-ns true
   clojure.lang.Named
   (getName [_] "Vertica"))
+
+(def ^:private vertica-date-formatters (driver/create-db-time-formatters "yyyy-MM-dd HH:mm:ss z"))
+(def ^:private vertica-db-time-query "select to_char(CURRENT_TIMESTAMP, 'YYYY-MM-DD HH24:MI:SS TZ')")
 
 (u/strict-extend VerticaDriver
   driver/IDriver
@@ -117,25 +121,14 @@
          {:date-interval     (u/drop-first-arg date-interval)
           :describe-database describe-database
           :details-fields    (constantly (ssh/with-tunnel-config
-                                           [{:name         "host"
-                                             :display-name "Host"
-                                             :default      "localhost"}
-                                            {:name         "port"
-                                             :display-name "Port"
-                                             :type         :integer
-                                             :default      5433}
-                                            {:name         "dbname"
-                                             :display-name "Database name"
-                                             :placeholder  "birds_of_the_word"
-                                             :required     true}
-                                            {:name         "user"
-                                             :display-name "Database username"
-                                             :placeholder  "What username do you use to login to the database?"
-                                             :required     true}
-                                            {:name         "password"
-                                             :display-name "Database password"
-                                             :type         :password
-                                             :placeholder  "*******"}]))})
+                                           [driver/default-host-details
+                                            (assoc driver/default-port-details :default 5433)
+                                            driver/default-dbname-details
+                                            driver/default-user-details
+                                            driver/default-password-details
+                                            (assoc driver/default-additional-options-details
+                                              :placeholder "ConnectionLoadBalance=1")]))
+          :current-db-time   (driver/make-current-db-time-fn vertica-db-time-query vertica-date-formatters)})
   sql/ISQLDriver
   (merge (sql/ISQLDriverDefaultsMixin)
          {:column->base-type         (u/drop-first-arg column->base-type)
