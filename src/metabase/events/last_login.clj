@@ -1,9 +1,7 @@
 (ns metabase.events.last-login
   (:require [clojure.core.async :as async]
             [clojure.tools.logging :as log]
-            [metabase
-             [events :as events]
-             [util :as u]]
+            [metabase.events :as events]
             [metabase.models.user :refer [User]]
             [toucan.db :as db]))
 
@@ -27,7 +25,7 @@
     (when-let [{object :item} last-login-event]
       ;; just make a simple attempt to set the `:last_login` for the given user to now
       (when-let [user-id (:user_id object)]
-        (db/update! User user-id, :last_login (u/new-sql-timestamp))))
+        (db/update! User user-id, :last_login :%now)))
     (catch Throwable e
       (log/warn (format "Failed to process sync-database event. %s" (:topic last-login-event)) e))))
 

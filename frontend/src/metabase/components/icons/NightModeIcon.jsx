@@ -2,15 +2,15 @@
 
 import React from "react";
 
-import Icon from "metabase/components/Icon.jsx";
+import Icon from "metabase/components/Icon";
 
 type Props = {
-    // ...IconProps,
-    isNightMode: boolean
+  // ...IconProps,
+  isNightMode: boolean,
 };
 
 const NightModeIcon = ({ isNightMode, ...props }: Props) => (
-    <Icon name={isNightMode ? "sun" : "moon"} {...props} />
+  <Icon name={isNightMode ? "sun" : "moon"} {...props} />
 );
 
 export default NightModeIcon;

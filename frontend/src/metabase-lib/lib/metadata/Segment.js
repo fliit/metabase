@@ -9,17 +9,21 @@ import type { FilterClause } from "metabase/meta/types/Query";
  * Wrapper class for a segment. Belongs to a {@link Database} and possibly a {@link Table}
  */
 export default class Segment extends Base {
-    displayName: string;
-    description: string;
+  name: string;
+  description: string;
 
-    database: Database;
-    table: Table;
+  database: Database;
+  table: Table;
 
-    filterClause(): FilterClause {
-        return ["SEGMENT", this.id];
-    }
+  displayName(): string {
+    return this.name;
+  }
 
-    isActive(): boolean {
-        return !!this.is_active;
-    }
+  filterClause(): FilterClause {
+    return ["segment", this.id];
+  }
+
+  isActive(): boolean {
+    return !this.archived;
+  }
 }

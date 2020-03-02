@@ -7,7 +7,7 @@
 (models/defmodel Session :core_session)
 
 (defn- pre-insert [session]
-  (assoc session :created_at (u/new-sql-timestamp)))
+  (assoc session :created_at :%now))
 
 (u/strict-extend (class Session)
   models/IModel

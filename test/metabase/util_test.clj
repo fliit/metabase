@@ -1,248 +1,273 @@
 (ns metabase.util-test
   "Tests for functions in `metabase.util`."
-  (:require [expectations :refer :all]
-            [metabase.util :refer :all]))
+  (:require [clojure.test :refer :all]
+            [clojure.tools.macro :as tools.macro]
+            [flatland.ordered.map :refer [ordered-map]]
+            [metabase.util :as u])
+  (:import java.util.Locale))
 
+(defn- are+-message [expr arglist args]
+  (pr-str
+   (second
+    (macroexpand-1
+     (list
+      `tools.macro/symbol-macrolet
+      (vec (apply concat (map-indexed (fn [i arg]
+                                        [arg (nth args i)])
+                                      arglist)))
+      expr)))))
 
-;;; Date stuff
+(defmacro ^:private are+
+  "Like `clojure.test/are` but includes a message for easier test failure debugging. (Also this is somewhat more
+  efficient since it generates far less code ­ it uses `doseq` rather than repeating the entire test each time.)
 
-(def ^:private ^:const saturday-the-31st   #inst "2005-12-31T19:05:55")
-(def ^:private ^:const sunday-the-1st #inst "2006-01-01T04:18:26")
+  TODO ­ if this macro proves useful, we should consider moving it to somewhere more general, such as
+  `metabase.test`."
+  {:style/indent 2}
+  [argv expr & args]
+  `(doseq [args# ~(mapv vec (partition (count argv) args))
+           :let [~argv args#]]
+     (is ~expr
+         (are+-message '~expr '~argv args#))))
 
-(expect false (is-temporal? nil))
-(expect false (is-temporal? 123))
-(expect false (is-temporal? "abc"))
-(expect false (is-temporal? [1 2 3]))
-(expect false (is-temporal? {:a "b"}))
-(expect true (is-temporal? saturday-the-31st))
+(deftest host-up?-test
+  (testing "host-up?"
+    (are+ [s expected] (= expected
+                          (u/host-up? s))
+      "localhost"  true
+      "nosuchhost" false))
+  (testing "host-port-up?"
+    (is (= false
+           (u/host-port-up? "nosuchhost" 8005)))))
 
-(expect saturday-the-31st (->Timestamp (->Date saturday-the-31st)))
-(expect saturday-the-31st (->Timestamp (->Calendar saturday-the-31st)))
-(expect saturday-the-31st (->Timestamp (->Calendar (.getTime saturday-the-31st))))
-(expect saturday-the-31st (->Timestamp (.getTime saturday-the-31st)))
-(expect saturday-the-31st (->Timestamp "2005-12-31T19:05:55+00:00"))
+(deftest url?-test
+  (are+ [s expected] (= expected
+                        (u/url? s))
+    "http://google.com"                                                                      true
+    "https://google.com"                                                                     true
+    "https://amazon.co.uk"                                                                   true
+    "http://google.com?q=my-query&etc"                                                       true
+    "http://www.cool.com"                                                                    true
+    "http://localhost/"                                                                      true
+    "http://localhost:3000"                                                                  true
+    "https://www.mapbox.com/help/data/stations.geojson"                                      true
+    "http://www.cool.com:3000"                                                               true
+    "http://localhost:3000/auth/reset_password/144_f98987de-53ca-4335-81da-31bb0de8ea2b#new" true
+    "http://192.168.1.10/"                                                                   true
+    "http://metabase.intranet/"                                                              true
+    ;; missing protocol
+    "google.com"                                                                             false
+    ;; protocol isn't HTTP/HTTPS
+    "ftp://metabase.com"                                                                     false
+    ;; no domain
+    "http://.com"                                                                            false
+    ;; no TLD
+    "http://google."                                                                         false
+    ;; no domain or tld
+    "http://"                                                                                false
+    ;; nil .getAuthority needs to be handled or NullPointerException
+    "http:/"                                                                                 false))
 
-(expect nil (->iso-8601-datetime nil nil))
-(expect "2005-12-31T19:05:55.000Z" (->iso-8601-datetime saturday-the-31st nil))
-(expect "2005-12-31T11:05:55.000-08:00" (->iso-8601-datetime saturday-the-31st "US/Pacific"))
-(expect "2006-01-01T04:05:55.000+09:00" (->iso-8601-datetime saturday-the-31st "Asia/Tokyo"))
+(deftest qualified-name-test
+  (are+ [k expected] (= expected
+                        (u/qualified-name k))
+    :keyword                          "keyword"
+    :namespace/keyword                "namespace/keyword"
+    ;; `qualified-name` should return strings as-is
+    "some string"                     "some string"
+    ;; `qualified-name` should work on anything that implements `clojure.lang.Named`
+    (reify clojure.lang.Named
+      (getName [_] "name")
+      (getNamespace [_] "namespace")) "namespace/name"
+    ;; `qualified-name` shouldn't throw an NPE (unlike `name`)
+    nil                               nil)
+  (testing "we shouldn't ignore non-nil values -- `u/qualified-name` should throw an Exception if `name` would"
+    (is (thrown? ClassCastException
+                 (u/qualified-name false)))))
 
+(deftest rpartial-test
+  (is (= 3
+         ((u/rpartial - 5) 8)))
+  (is (= -7
+         ((u/rpartial - 5 10) 8))))
 
-(expect 5    (date-extract :minute-of-hour  saturday-the-31st   "UTC"))
-(expect 19   (date-extract :hour-of-day     saturday-the-31st   "UTC"))
-(expect 7    (date-extract :day-of-week     saturday-the-31st   "UTC"))
-(expect 1    (date-extract :day-of-week     sunday-the-1st      "UTC"))
-(expect 31   (date-extract :day-of-month    saturday-the-31st   "UTC"))
-(expect 365  (date-extract :day-of-year     saturday-the-31st   "UTC"))
-(expect 53   (date-extract :week-of-year    saturday-the-31st   "UTC"))
-(expect 12   (date-extract :month-of-year   saturday-the-31st   "UTC"))
-(expect 4    (date-extract :quarter-of-year saturday-the-31st   "UTC"))
-(expect 2005 (date-extract :year            saturday-the-31st   "UTC"))
+(deftest key-by-test
+  (is (= {1 {:id 1, :name "Rasta"}
+          2 {:id 2, :name "Lucky"}}
+         (u/key-by :id [{:id 1, :name "Rasta"}
+                        {:id 2, :name "Lucky"}]))))
 
-(expect 5    (date-extract :minute-of-hour  saturday-the-31st   "US/Pacific"))
-(expect 11   (date-extract :hour-of-day     saturday-the-31st   "US/Pacific"))
-(expect 7    (date-extract :day-of-week     saturday-the-31st   "US/Pacific"))
-(expect 7    (date-extract :day-of-week     sunday-the-1st      "US/Pacific"))
-(expect 31   (date-extract :day-of-month    saturday-the-31st   "US/Pacific"))
-(expect 365  (date-extract :day-of-year     saturday-the-31st   "US/Pacific"))
-(expect 53   (date-extract :week-of-year    saturday-the-31st   "US/Pacific"))
-(expect 12   (date-extract :month-of-year   saturday-the-31st   "US/Pacific"))
-(expect 4    (date-extract :quarter-of-year saturday-the-31st   "US/Pacific"))
-(expect 2005 (date-extract :year            saturday-the-31st   "US/Pacific"))
+(deftest remove-diacritical-marks-test
+  (doseq [[s expected] {"üuuü" "uuuu"
+                        "åéîü" "aeiu"
+                        "åçñx" "acnx"
+                        ""     nil
+                        nil    nil}]
+    (testing (list 'u/remove-diacritical-marks s)
+      (is (= expected
+             (u/remove-diacritical-marks s))))))
 
-(expect 5    (date-extract :minute-of-hour  saturday-the-31st   "Asia/Tokyo"))
-(expect 4    (date-extract :hour-of-day     saturday-the-31st   "Asia/Tokyo"))
-(expect 1    (date-extract :day-of-week     saturday-the-31st   "Asia/Tokyo"))
-(expect 1    (date-extract :day-of-week     sunday-the-1st      "Asia/Tokyo"))
-(expect 1    (date-extract :day-of-month    saturday-the-31st   "Asia/Tokyo"))
-(expect 1    (date-extract :day-of-year     saturday-the-31st   "Asia/Tokyo"))
-(expect 1    (date-extract :week-of-year    saturday-the-31st   "Asia/Tokyo"))
-(expect 1    (date-extract :month-of-year   saturday-the-31st   "Asia/Tokyo"))
-(expect 1    (date-extract :quarter-of-year saturday-the-31st   "Asia/Tokyo"))
-(expect 2006 (date-extract :year            saturday-the-31st   "Asia/Tokyo"))
+(deftest slugify-test
+  (doseq [[group s->expected]
+          {nil
+           {"ToucanFest 2017"               "toucanfest_2017"
+            "Cam's awesome toucan emporium" "cam_s_awesome_toucan_emporium"
+            "Frequently-Used Cards"         "frequently_used_cards"}
 
+           "check that diactrics get removed"
+           {"Cam Saul's Toucannery"      "cam_saul_s_toucannery"
+            "toucans dislike piñatas :(" "toucans_dislike_pinatas___" }
 
-(expect #inst "2005-12-31T19:05" (date-trunc :minute  saturday-the-31st   "UTC"))
-(expect #inst "2005-12-31T19:00" (date-trunc :hour    saturday-the-31st   "UTC"))
-(expect #inst "2005-12-31"       (date-trunc :day     saturday-the-31st   "UTC"))
-(expect #inst "2005-12-25"       (date-trunc :week    saturday-the-31st   "UTC"))
-(expect #inst "2006-01-01"       (date-trunc :week    sunday-the-1st      "UTC"))
-(expect #inst "2005-12-01"       (date-trunc :month   saturday-the-31st   "UTC"))
-(expect #inst "2005-10-01"       (date-trunc :quarter saturday-the-31st   "UTC"))
+           "check that non-ASCII characters get URL-encoded (so we can support non-Latin alphabet languages; see #3818)"
+           {"勇士" "%E5%8B%87%E5%A3%AB"}}]
+    (testing group
+      (doseq [[s expected] s->expected]
+        (testing (list 'u/slugify s)
+          (is (= expected
+                 (u/slugify s))))))))
 
-(expect #inst "2005-12-31T19:05" (date-trunc :minute  saturday-the-31st   "Asia/Tokyo"))
-(expect #inst "2005-12-31T19:00" (date-trunc :hour    saturday-the-31st   "Asia/Tokyo"))
-(expect #inst "2006-01-01+09:00" (date-trunc :day     saturday-the-31st   "Asia/Tokyo"))
-(expect #inst "2006-01-01+09:00" (date-trunc :week    saturday-the-31st   "Asia/Tokyo"))
-(expect #inst "2006-01-01+09:00" (date-trunc :week    sunday-the-1st      "Asia/Tokyo"))
-(expect #inst "2006-01-01+09:00" (date-trunc :month   saturday-the-31st   "Asia/Tokyo"))
-(expect #inst "2006-01-01+09:00" (date-trunc :quarter saturday-the-31st   "Asia/Tokyo"))
+(deftest select-nested-keys-test
+  (are+ [m keyseq expected] (= expected
+                               (u/select-nested-keys m keyseq))
+    {:a 100, :b {:c 200, :d 300}}              [:a [:b :d] :c]   {:a 100, :b {:d 300}}
+    {:a 100, :b {:c 200, :d 300}}              [:b]              {:b {:c 200, :d 300}}
+    {:a 100, :b {:c 200, :d 300}}              [[:b :c :d]]      {:b {:c 200, :d 300}}
+    {:a 100, :b {:c 200, :d {:e 300}}}         [[:b [:d :e]]]    {:b {:d {:e 300}}}
+    {:a 100, :b {:c 200, :d {:e 300}}}         [[:b :d]]         {:b {:d {:e 300}}}
+    {:a {:b 100, :c 200}, :d {:e 300, :f 400}} [[:a :b] [:d :e]] {:a {:b 100}, :d {:e 300}}
+    {:a 100, :b {:c 200, :d 300}}              [[:a]]            {:a 100}
+    {:a 100, :b {:c 200, :d 300}}              [:c]              {}
+    nil                                        [:c]              {}
+    {}                                         nil               {}
+    {:a 100, :b {:c 200, :d 300}}              []                {}
+    {}                                         [:c]              {}))
 
-(expect #inst "2005-12-31T19:05" (date-trunc :minute  saturday-the-31st   "US/Pacific"))
-(expect #inst "2005-12-31T19:00" (date-trunc :hour    saturday-the-31st   "US/Pacific"))
-(expect #inst "2005-12-31-08:00" (date-trunc :day     saturday-the-31st   "US/Pacific"))
-(expect #inst "2005-12-25-08:00" (date-trunc :week    saturday-the-31st   "US/Pacific"))
-(expect #inst "2005-12-25-08:00" (date-trunc :week    sunday-the-1st      "US/Pacific"))
-(expect #inst "2005-12-01-08:00" (date-trunc :month   saturday-the-31st   "US/Pacific"))
-(expect #inst "2005-10-01-08:00" (date-trunc :quarter saturday-the-31st   "US/Pacific"))
+(deftest base64-string?-test
+  (are+ [s expected] (= expected
+                        (u/base64-string? s))
+    "ABc"           true
+    "ABc/+asdasd==" true
+    100             false
+    "<<>>"          false
+    "{\"a\": 10}"   false))
 
-;;; ## tests for HOST-UP?
+(deftest occurances-of-substring-test
+  (testing "should return nil if one or both strings are nil or empty"
+    (are+ [s substr expected] (= expected
+                                 (u/occurances-of-substring s substr))
+      nil                                                                                 nil      nil
+      nil                                                                                 ""       nil
+      ""                                                                                  nil      nil
+      ""                                                                                  ""       nil
+      "ABC"                                                                               ""       nil
+      ""                                                                                  "  ABC"  nil
+      ;; non-empty strings
+      "ABC"                                                                               "A"      1
+      "ABA"                                                                               "A"      2
+      "AAA"                                                                               "A"      3
+      "ABC"                                                                               "{{id}}" 0
+      "WHERE ID = {{id}}"                                                                 "{{id}}" 1
+      "WHERE ID = {{id}} OR USER_ID = {{id}}"                                             "{{id}}" 2
+      "WHERE ID = {{id}} OR USER_ID = {{id}} OR TOUCAN_ID = {{id}} OR BIRD_ID = {{bird}}" "{{id}}" 3)))
 
-(expect true
-  (host-up? "localhost"))
+(deftest select-keys-test
+  (testing "select-non-nil-keys"
+    (is (= {:a 100}
+           (u/select-non-nil-keys {:a 100, :b nil} #{:a :b :c}))))
+  (testing "select-keys-when"
+    (is (= {:a 100, :b nil, :d 200}
+           (u/select-keys-when {:a 100, :b nil, :d 200, :e nil}
+             :present #{:a :b :c}
+             :non-nil #{:d :e :f})))))
 
-(expect false
-  (host-up? "nosuchhost"))
+(deftest order-of-magnitude-test
+  (are+ [n expected] (= expected
+                        (u/order-of-magnitude n))
+    0.01  -2
+    0.5   -1
+    4     0
+    12    1
+    444   2
+    1023  3
+    0     0
+    -1444 3))
 
-;;; ## tests for HOST-PORT-UP?
+(deftest update-when-test
+  (testing "update-when"
+    (are [m expected] (= expected
+                         (u/update-when m :bar inc))
+      {:foo 2}        {:foo 2}
+      {:foo 2 :bar 2} {:foo 2 :bar 3}))
+  (testing "update-in-when"
+    (are [m expected] (= expected
+                         (u/update-in-when m [:foo :bar] inc))
+      {:foo 2}        {:foo 2}
+      {:foo {:bar 2}} {:foo {:bar 3}})))
 
-(expect false
-  (host-port-up? "nosuchhost" 8005))
+(deftest index-of-test
+  (are [input expected] (= expected
+                           (u/index-of pos? input))
+    [-1 0 2 3]   2
+    [-1 0 -2 -3] nil
+    nil          nil
+    []           nil))
 
+(deftest snake-key-test
+  (is (= {:num_cans 2, :lisp_case? {:nested_maps? true}}
+         (u/snake-keys {:num-cans 2, :lisp-case? {:nested-maps? true}}))))
 
-;;; ## tests for IS-URL?
+(deftest one-or-many-test
+  (are+ [input expected] (= expected
+                            (u/one-or-many input))
+    nil   nil
+    [nil] [nil]
+    42    [42]
+    [42]  [42]))
 
-(expect true (is-url? "http://google.com"))
-(expect true (is-url? "https://google.com"))
-(expect true (is-url? "https://amazon.co.uk"))
-(expect true (is-url? "http://google.com?q=my-query&etc"))
-(expect true (is-url? "http://www.cool.com"))
-(expect true (is-url? "http://localhost/"))
-(expect true (is-url? "http://localhost:3000"))
-(expect true (is-url? "https://www.mapbox.com/help/data/stations.geojson"))
-(expect true (is-url? "http://www.cool.com:3000"))
-(expect true (is-url? "http://localhost:3000/auth/reset_password/144_f98987de-53ca-4335-81da-31bb0de8ea2b#new"))
-(expect false (is-url? "google.com"))                      ; missing protocol
-(expect false (is-url? "ftp://metabase.com"))              ; protocol isn't HTTP/HTTPS
-(expect false (is-url? "http://metabasecom"))              ; no period / TLD
-(expect false (is-url? "http://.com"))                     ; no domain
-(expect false (is-url? "http://google."))                  ; no TLD
-(expect false (is-url? "http:/"))                          ; nil .getAuthority needs to be handled or NullPointerException
+(deftest topological-sort-test
+  (are+ [input expected] (= expected
+                            (u/topological-sort identity input))
+    {:b []
+     :c [:a]
+     :e [:d]
+     :d [:a :b :c]
+     :a []}
+    (ordered-map :a [] :b [] :c [:a] :d [:a :b :c] :e [:d])
 
-;;; ## tests for RPARTIAL
+    {}  nil
+    nil nil))
 
-(expect 3
-  ((rpartial - 5) 8))
+(deftest lower-case-en-test
+  (let [original-locale (Locale/getDefault)]
+    (try
+      (Locale/setDefault (Locale/forLanguageTag "tr"))
+      ;; `(str/lower-case "ID")` returns "ıd" in the Turkish locale
+      (is (= "id"
+             (u/lower-case-en "ID")))
+      (finally
+        (Locale/setDefault original-locale)))))
 
-(expect -7
-  ((rpartial - 5 10) 8))
+(deftest parse-currency-test
+  (are+ [s expected] (= expected
+                        (u/parse-currency s))
+    nil             nil
+    ""              nil
+    "   "           nil
+    "$1,000"        1000.0M
+    "$1,000,000"    1000000.0M
+    "$1,000.00"     1000.0M
+    "€1.000"        1000.0M
+    "€1.000,00"     1000.0M
+    "€1.000.000,00" 1000000.0M
+    "-£127.54"      -127.54M
+    "-127,54 €"     -127.54M
+    "kr-127,54"     -127.54M
+    "€ 127,54-"     -127.54M
+    "¥200"          200.0M
+    "¥200."         200.0M
+    "$.05"          0.05M
+    "0.05"          0.05M))
 
-
-;;; TESTS FOR key-by
-(expect
-  {1 {:id 1, :name "Rasta"}
-   2 {:id 2, :name "Lucky"}}
-  (key-by :id [{:id 1, :name "Rasta"}
-               {:id 2, :name "Lucky"}]))
-
-
-;; Tests for remove-diacritical marks
-(expect "uuuu" (remove-diacritical-marks "üuuü"))
-(expect "aeiu" (remove-diacritical-marks "åéîü"))
-(expect "acnx" (remove-diacritical-marks "åçñx"))
-(expect nil    (remove-diacritical-marks ""))
-(expect nil    (remove-diacritical-marks nil))
-
-;;; Tests for slugify
-(expect "toucanfest_2017"               (slugify "ToucanFest 2017"))
-(expect "cam_s_awesome_toucan_emporium" (slugify "Cam's awesome toucan emporium"))
-(expect "frequently_used_cards"         (slugify "Frequently-Used Cards"))
-;; check that diactrics get removed
-(expect "cam_saul_s_toucannery"         (slugify "Cam Saül's Toucannery"))
-(expect "toucans_dislike_pinatas___"    (slugify "toucans dislike piñatas :("))
-;; check that non-ASCII characters get URL-encoded (so we can support non-Latin alphabet languages; see #3818)
-(expect "%E5%8B%87%E5%A3%AB"            (slugify "勇士")) ; go dubs
-
-
-;;; select-nested-keys
-(expect
-  {:a 100, :b {:d 300}}
-  (select-nested-keys {:a 100, :b {:c 200, :d 300}} [:a [:b :d] :c]))
-
-(expect
-  {:b {:c 200, :d 300}}
-  (select-nested-keys {:a 100, :b {:c 200, :d 300}} [:b]))
-
-(expect
-  {:b {:c 200, :d 300}}
-  (select-nested-keys {:a 100, :b {:c 200, :d 300}} [[:b :c :d]]))
-
-(expect
-  {:b {:d {:e 300}}}
-  (select-nested-keys {:a 100, :b {:c 200, :d {:e 300}}} [[:b [:d :e]]]))
-
-(expect
-  {:b {:d {:e 300}}}
-  (select-nested-keys {:a 100, :b {:c 200, :d {:e 300}}} [[:b :d]]))
-
-(expect
-  {:a {:b 100}, :d {:e 300}}
-  (select-nested-keys {:a {:b 100, :c 200}, :d {:e 300, :f 400}} [[:a :b] [:d :e]]))
-
-(expect
-  {:a 100}
-  (select-nested-keys {:a 100, :b {:c 200, :d 300}} [[:a]]))
-
-(expect
-  {}
-  (select-nested-keys {:a 100, :b {:c 200, :d 300}} [:c]))
-
-(expect
-  {}
-  (select-nested-keys nil [:c]))
-
-(expect
-  {}
-  (select-nested-keys {} nil))
-
-(expect
-  {}
-  (select-nested-keys {:a 100, :b {:c 200, :d 300}} []))
-
-(expect
-  {}
-  (select-nested-keys {} [:c]))
-
-
-;;; tests for base-64-string?
-(expect (base-64-string? "ABc"))
-(expect (base-64-string? "ABc/+asdasd=="))
-(expect false (base-64-string? 100))
-(expect false (base-64-string? "<<>>"))
-(expect false (base-64-string? "{\"a\": 10}"))
-
-
-;;; tests for `occurances-of-substring`
-
-;; return nil if one or both strings are nil or empty
-(expect nil (occurances-of-substring nil   nil))
-(expect nil (occurances-of-substring nil   ""))
-(expect nil (occurances-of-substring ""    nil))
-(expect nil (occurances-of-substring ""    ""))
-(expect nil (occurances-of-substring "ABC" ""))
-(expect nil (occurances-of-substring "" "  ABC"))
-
-(expect 1 (occurances-of-substring "ABC" "A"))
-(expect 2 (occurances-of-substring "ABA" "A"))
-(expect 3 (occurances-of-substring "AAA" "A"))
-
-(expect 0 (occurances-of-substring "ABC"                                                                               "{{id}}"))
-(expect 1 (occurances-of-substring "WHERE ID = {{id}}"                                                                 "{{id}}"))
-(expect 2 (occurances-of-substring "WHERE ID = {{id}} OR USER_ID = {{id}}"                                             "{{id}}"))
-(expect 3 (occurances-of-substring "WHERE ID = {{id}} OR USER_ID = {{id}} OR TOUCAN_ID = {{id}} OR BIRD_ID = {{bird}}" "{{id}}"))
-
-
-;;; tests for `select-non-nil-keys` and `select-keys-when`
-(expect
-  {:a 100}
-  (select-non-nil-keys {:a 100, :b nil} #{:a :b :c}))
-
-(expect
-  {:a 100, :b nil, :d 200}
-  (select-keys-when {:a 100, :b nil, :d 200, :e nil}
-    :present #{:a :b :c}
-    :non-nil #{:d :e :f}))
-
-(expect
-  [-2 -1 0 1 2 3 0 3]
-  (map order-of-magnitude [0.01 0.5 4 12 444 1023 0 -1444]))
+;; Local Variables:
+;; eval: (add-to-list (make-local-variable 'clojure-align-cond-forms) "are+")
+;; End:

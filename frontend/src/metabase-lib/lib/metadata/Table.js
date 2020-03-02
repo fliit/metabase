@@ -1,5 +1,6 @@
 /* @flow weak */
 
+// NOTE: this needs to be imported first due to some cyclical dependency nonsense
 import Question from "../Question";
 
 import Base from "./Base";
@@ -7,45 +8,91 @@ import Database from "./Database";
 import Field from "./Field";
 
 import type { SchemaName } from "metabase/meta/types/Table";
+import type { FieldMetadata } from "metabase/meta/types/Metadata";
+
+import { titleize, singularize, humanize } from "metabase/lib/formatting";
 
 import Dimension from "../Dimension";
 
+import type StructuredQuery from "metabase-lib/lib/queries/StructuredQuery";
+
+type EntityType = string; // TODO: move somewhere central
+
 import _ from "underscore";
-import type { FieldMetadata } from "metabase/meta/types/Metadata";
 
 /** This is the primary way people interact with tables */
 export default class Table extends Base {
-    displayName: string;
-    description: string;
+  description: string;
 
-    schema: ?SchemaName;
-    db: Database;
+  schema: ?SchemaName;
+  db: Database;
 
-    fields: FieldMetadata[];
+  fields: FieldMetadata[];
 
-    // $FlowFixMe Could be replaced with hydrated database property in selectors/metadata.js (instead / in addition to `table.db`)
-    get database() {
-        return this.db;
-    }
+  entity_type: ?EntityType;
 
-    newQuestion(): Question {
-        // $FlowFixMe
-        return new Question();
-    }
+  hasSchema(): boolean {
+    return (this.schema && this.db.schemaNames().length > 1) || false;
+  }
 
-    dimensions(): Dimension[] {
-        return this.fields.map(field => field.dimension());
-    }
+  // $FlowFixMe Could be replaced with hydrated database property in selectors/metadata.js (instead / in addition to `table.db`)
+  get database() {
+    return this.db;
+  }
 
-    dateFields(): Field[] {
-        return this.fields.filter(field => field.isDate());
-    }
+  newQuestion(): Question {
+    return this.question()
+      .setDefaultQuery()
+      .setDefaultDisplay();
+  }
 
-    aggregations() {
-        return this.aggregation_options || [];
-    }
+  question(): Question {
+    return Question.create({
+      databaseId: this.db.id,
+      tableId: this.id,
+      metadata: this.metadata,
+    });
+  }
 
-    aggregation(agg) {
-        return _.findWhere(this.aggregations(), { short: agg });
-    }
+  query(query = {}): StructuredQuery {
+    return (
+      this.question()
+        .query()
+        // $FlowFixMe: we know question returns a StructuredQuery but flow doesn't
+        .updateQuery(q => ({ ...q, ...query }))
+    );
+  }
+
+  dimensions(): Dimension[] {
+    return this.fields.map(field => field.dimension());
+  }
+
+  displayName({ includeSchema } = {}) {
+    return (
+      (includeSchema && this.schema
+        ? titleize(humanize(this.schema)) + "."
+        : "") + this.display_name
+    );
+  }
+
+  /**
+   * The singular form of the object type this table represents
+   * Currently we try to guess this by singularizing `display_name`, but ideally it would be configurable in metadata
+   * See also `field.targetObjectName()`
+   */
+  objectName() {
+    return singularize(this.displayName());
+  }
+
+  dateFields(): Field[] {
+    return this.fields.filter(field => field.isDate());
+  }
+
+  aggregationOperators() {
+    return this.aggregation_operators || [];
+  }
+
+  aggregation(agg) {
+    return _.findWhere(this.aggregationOperators(), { short: agg });
+  }
 }

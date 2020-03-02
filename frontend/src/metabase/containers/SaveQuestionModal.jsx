@@ -1,252 +1,176 @@
 import React, { Component } from "react";
 import PropTypes from "prop-types";
 
-import ReactCSSTransitionGroup from "react-addons-css-transition-group";
+import { CSSTransitionGroup } from "react-transition-group";
 
-import FormField from "metabase/components/FormField.jsx";
-import ModalContent from "metabase/components/ModalContent.jsx";
-import Radio from "metabase/components/Radio.jsx";
-import Select, { Option } from "metabase/components/Select.jsx";
-import Button from "metabase/components/Button";
-import CollectionList from "metabase/questions/containers/CollectionList";
+import Form, { FormField, FormFooter } from "metabase/containers/Form";
+import ModalContent from "metabase/components/ModalContent";
+import Radio from "metabase/components/Radio";
 
-import Query from "metabase/lib/query";
-import { cancelable } from "metabase/lib/promise";
+import * as Q_DEPRECATED from "metabase/lib/query";
+import validate from "metabase/lib/validate";
+
+import { t } from "ttag";
 
 import "./SaveQuestionModal.css";
 
 export default class SaveQuestionModal extends Component {
+  static propTypes = {
+    card: PropTypes.object.isRequired,
+    originalCard: PropTypes.object,
+    tableMetadata: PropTypes.object, // can't be required, sometimes null
+    onCreate: PropTypes.func.isRequired,
+    onSave: PropTypes.func.isRequired,
+    onClose: PropTypes.func.isRequired,
+    multiStep: PropTypes.bool,
+  };
 
-    constructor(props, context) {
-        super(props, context);
+  handleSubmit = async details => {
+    // TODO Atte Keinäenn 31/1/18 Refactor this
+    // I think that the primary change should be that
+    // SaveQuestionModal uses Question objects instead of directly modifying card objects –
+    // but that is something that doesn't need to be done first)
+    // question
+    //     .setDisplayName(details.name.trim())
+    //     .setDescription(details.description ? details.description.trim() : null)
+    //     .setCollectionId(details.collection_id)
+    let { card, originalCard, onCreate, onSave } = this.props;
 
-        const isStructured = Query.isStructured(props.card.dataset_query);
+    card = {
+      ...card,
+      name:
+        details.saveType === "overwrite"
+          ? originalCard.name
+          : details.name.trim(),
+      // since description is optional, it can be null, so check for a description before trimming it
+      description:
+        details.saveType === "overwrite"
+          ? originalCard.description
+          : details.description
+          ? details.description.trim()
+          : null,
+      collection_id:
+        details.saveType === "overwrite"
+          ? originalCard.collection_id
+          : details.collection_id,
+    };
 
-        this.state = {
-            error: null,
-            valid: false,
-            details: {
-                name: props.card.name || isStructured ? Query.generateQueryDescription(props.tableMetadata, props.card.dataset_query.query) : "",
-                description: props.card.description || '',
-                collection_id: props.card.collection_id || null,
-                saveType: props.originalCard ? "overwrite" : "create"
-            }
-        };
+    if (details.saveType === "create") {
+      await onCreate(card);
+    } else if (details.saveType === "overwrite") {
+      card.id = this.props.originalCard.id;
+      await onSave(card);
     }
+  };
 
-    static propTypes = {
-        card: PropTypes.object.isRequired,
-        originalCard: PropTypes.object,
-        tableMetadata: PropTypes.object, // can't be required, sometimes null
-        createFn: PropTypes.func.isRequired,
-        saveFn: PropTypes.func.isRequired,
-        onClose: PropTypes.func.isRequired
-    }
+  render() {
+    const {
+      card,
+      originalCard,
+      initialCollectionId,
+      tableMetadata,
+    } = this.props;
 
-    componentDidMount() {
-        this.validateForm();
-    }
+    const isStructured = Q_DEPRECATED.isStructured(card.dataset_query);
 
-    componentDidUpdate() {
-        this.validateForm();
-    }
+    const initialValues = {
+      name:
+        card.name || isStructured
+          ? Q_DEPRECATED.generateQueryDescription(
+              tableMetadata,
+              card.dataset_query.query,
+            )
+          : "",
+      description: card.description || "",
+      collection_id:
+        card.collection_id === undefined
+          ? initialCollectionId
+          : card.collection_id,
+      saveType: originalCard ? "overwrite" : "create",
+    };
 
-    componentWillUnmount() {
-        if (this.requestPromise) {
-            this.requestPromise.cancel();
-        }
-    }
+    const title = this.props.multiStep
+      ? t`First, save your question`
+      : t`Save question`;
 
-    validateForm() {
-        let { details } = this.state;
+    const showSaveType = !card.id && !!originalCard;
 
-        let valid = true;
-
-        // name is required for create
-        if (details.saveType === "create" && !details.name) {
-            valid = false;
-        }
-
-        if (this.state.valid !== valid) {
-            this.setState({ valid });
-        }
-    }
-
-    onChange(fieldName, fieldValue) {
-        this.setState({ details: { ...this.state.details, [fieldName]: fieldValue ? fieldValue : null }});
-    }
-
-    formSubmitted = async (e) => {
-        try {
-            if (e) {
-                e.preventDefault();
-            }
-
-            let { details } = this.state;
-            let { card, originalCard, addToDashboard, createFn, saveFn } = this.props;
-
-            card = {
-                ...card,
-                name: details.saveType === "overwrite" ?
-                    originalCard.name :
-                    details.name.trim(),
-                // since description is optional, it can be null, so check for a description before trimming it
-                description: details.saveType === "overwrite" ?
-                    originalCard.description :
-                    details.description ? details.description.trim() : null,
-                collection_id: details.saveType === "overwrite" ?
-                    originalCard.collection_id :
-                    details.collection_id
-            };
-
-            if (details.saveType === "create") {
-                this.requestPromise = cancelable(createFn(card, addToDashboard));
-            } else if (details.saveType === "overwrite") {
-                card.id = this.props.originalCard.id;
-                this.requestPromise = cancelable(saveFn(card, addToDashboard));
-            }
-
-            await this.requestPromise;
-            this.requestPromise = null;
-            this.props.onClose();
-        } catch (error) {
-            if (error && !error.isCanceled) {
-                this.setState({ error: error });
-            }
-        }
-    }
-
-    render() {
-        let { error, details } = this.state;
-        var formError;
-        if (error) {
-            var errorMessage;
-            if (error.status === 500) {
-                errorMessage = "Server error encountered";
-            }
-
-            if (error.data && error.data.message) {
-                errorMessage = error.data.message;
-            }
-            if (error.data && error.data.errors) {
-                errorMessage = Object.values(error.data.errors);
-            }
-
-            // TODO: timeout display?
-            if (errorMessage) {
-                formError = (
-                    <span className="text-error px2">{errorMessage}</span>
-                );
-            }
-        }
-
-        var saveOrUpdate = null;
-        if (!this.props.card.id && this.props.originalCard) {
-            saveOrUpdate = (
-                <FormField
-                    displayName="Replace or save as new?"
-                    fieldName="saveType"
-                    errors={this.state.errors}
-                >
-                    <Radio
-                        value={this.state.details.saveType}
-                        onChange={(value) => this.onChange("saveType", value)}
-                        options={[
-                            { name: `Replace original question, "${this.props.originalCard.name}"`, value: "overwrite" },
-                            { name: "Save as new question", value: "create" },
-                        ]}
-                        isVertical
+    return (
+      <ModalContent
+        id="SaveQuestionModal"
+        title={title}
+        onClose={this.props.onClose}
+      >
+        <Form
+          initialValues={initialValues}
+          fields={[
+            { name: "saveType" },
+            { name: "name" },
+            { name: "description" },
+            { name: "collection_id" },
+          ]}
+          onSubmit={this.handleSubmit}
+        >
+          {({ values, Form }) => (
+            <Form>
+              <FormField
+                name="saveType"
+                title={t`Replace or save as new?`}
+                type={SaveTypeInput}
+                hidden={!showSaveType}
+                originalCard={originalCard}
+              />
+              <CSSTransitionGroup
+                transitionName="saveQuestionModalFields"
+                transitionEnterTimeout={500}
+                transitionLeaveTimeout={500}
+              >
+                {values.saveType === "create" && (
+                  <div className="saveQuestionModalFields">
+                    <FormField
+                      name="name"
+                      title={t`Name`}
+                      placeholder={t`What is the name of your card?`}
+                      validate={
+                        values.saveType === "create"
+                          ? validate.required()
+                          : null
+                      }
                     />
-                </FormField>
-            );
-        }
-
-        let title = this.props.addToDashboard ? "First, save your question" : "Save question";
-
-        return (
-            <ModalContent
-                id="SaveQuestionModal"
-                title={title}
-                footer={[
-                        formError,
-                        <Button onClick={this.props.onClose}>
-                            Cancel
-                        </Button>,
-                        <Button primary={this.state.valid} disabled={!this.state.valid} onClick={this.formSubmitted}>
-                            Save
-                        </Button>
-                ]}
-                onClose={this.props.onClose}
-            >
-                <form className="Form-inputs" onSubmit={this.formSubmitted}>
-                    {saveOrUpdate}
-                    <ReactCSSTransitionGroup
-                        transitionName="saveQuestionModalFields"
-                        transitionEnterTimeout={500}
-                        transitionLeaveTimeout={500}
-                    >
-                        { details.saveType === "create" &&
-                            <div key="saveQuestionModalFields" className="saveQuestionModalFields">
-                                <FormField
-                                    displayName="Name"
-                                    fieldName="name"
-                                    errors={this.state.errors}
-                                >
-                                    <input
-                                        className="Form-input full"
-                                        name="name" placeholder="What is the name of your card?"
-                                        value={this.state.details.name}
-                                        onChange={(e) => this.onChange("name", e.target.value)}
-                                        autoFocus
-                                    />
-                                </FormField>
-                                <FormField
-                                    displayName="Description"
-                                    fieldName="description"
-                                    errors={this.state.errors}
-                                >
-                                    <textarea
-                                        className="Form-input full"
-                                        name="description"
-                                        placeholder="It's optional but oh, so helpful"
-                                        value={this.state.details.description}
-                                        onChange={(e) => this.onChange("description", e.target.value)}
-                                    />
-                                </FormField>
-                                <CollectionList writable>
-                                { (collections) => collections.length > 0 &&
-                                    <FormField
-                                        displayName="Which collection should this go in?"
-                                        fieldName="collection_id"
-                                        errors={this.state.errors}
-                                    >
-                                        <Select
-                                            className="block"
-                                            value={this.state.details.collection_id}
-                                            onChange={e => this.onChange("collection_id", e.target.value)}
-                                        >
-                                            {[{ name: "None", id: null }]
-                                            .concat(collections)
-                                            .map((collection, index) =>
-                                                <Option
-                                                    key={index}
-                                                    value={collection.id}
-                                                    icon={collection.id != null ? "collection" : null}
-                                                    iconColor={collection.color}
-                                                    iconSize={18}
-                                                >
-                                                    {collection.name}
-                                                </Option>
-                                            )}
-                                        </Select>
-                                    </FormField>
-                                }
-                                </CollectionList>
-                            </div>
-                        }
-                    </ReactCSSTransitionGroup>
-                </form>
-            </ModalContent>
-        );
-    }
+                    <FormField
+                      name="description"
+                      type="text"
+                      title={t`Description`}
+                      placeholder={t`It's optional but oh, so helpful`}
+                    />
+                    <FormField
+                      name="collection_id"
+                      title={t`Which collection should this go in?`}
+                      type="collection"
+                    />
+                  </div>
+                )}
+              </CSSTransitionGroup>
+              <FormFooter submitTitle={t`Save`} onCancel={this.props.onClose} />
+            </Form>
+          )}
+        </Form>
+      </ModalContent>
+    );
+  }
 }
+
+const SaveTypeInput = ({ field, originalCard }) => (
+  <Radio
+    {...field}
+    options={[
+      {
+        name: t`Replace original question, "${originalCard &&
+          originalCard.name}"`,
+        value: "overwrite",
+      },
+      { name: t`Save as new question`, value: "create" },
+    ]}
+    vertical
+  />
+);

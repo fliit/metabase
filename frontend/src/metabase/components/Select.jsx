@@ -2,262 +2,242 @@
 import React, { Component } from "react";
 import PropTypes from "prop-types";
 
-import ColumnarSelector from "metabase/components/ColumnarSelector.jsx";
-import Icon from "metabase/components/Icon.jsx";
-import PopoverWithTrigger from "metabase/components/PopoverWithTrigger.jsx";
+import Icon from "metabase/components/Icon";
+import PopoverWithTrigger from "metabase/components/PopoverWithTrigger";
+import SelectButton from "./SelectButton";
 
+import _ from "underscore";
 import cx from "classnames";
 
+import AccordionList from "./AccordionList";
+import { createSelector } from "reselect";
+
+import { color } from "metabase/lib/colors";
+
+import Uncontrollable from "metabase/hoc/Uncontrollable";
+
+const MIN_ICON_WIDTH = 20;
+
+@Uncontrollable()
 export default class Select extends Component {
-    static propTypes = {
-        children: PropTypes.any
-    };
+  static propTypes = {
+    className: PropTypes.string,
 
-    render() {
-        if (this.props.children) {
-            return <BrowserSelect {...this.props} />;
-        } else {
-            return <LegacySelect {...this.props} />;
-        }
-    }
-}
-
-class BrowserSelect extends Component {
-    constructor(props, context) {
-        super(props, context);
-        this.state = {
-            inputValue: ""
-        };
-    }
-    static propTypes = {
-        children: PropTypes.array.isRequired,
-        className: PropTypes.string,
-        value: PropTypes.any,
-        onChange: PropTypes.func.isRequired,
-        searchProp: PropTypes.string,
-        searchCaseInsensitive: PropTypes.bool,
-        isInitiallyOpen: PropTypes.bool,
-        placeholder: PropTypes.string
-    }
-    static defaultProps = {
-        className: "",
-    }
-
-    isSelected(otherValue) {
-        const { value } = this.props;
-        return (value === otherValue || ((value == null || value === "") && (otherValue == null || otherValue === "")))
-    }
-
-    render() {
-        const { className, children, value, onChange, searchProp, searchCaseInsensitive, isInitiallyOpen, placeholder } = this.props;
-
-        let selectedName;
-        for (const child of children) {
-            if (this.isSelected(child.props.value)) {
-                selectedName = child.props.children;
-            }
-        }
-        if (selectedName == null && placeholder) {
-            selectedName = placeholder;
-        }
-
-        const { inputValue } = this.state;
-        let filter = () => true;
-        if (searchProp && inputValue) {
-            filter = (child) => {
-                let childValue = String(child.props[searchProp] || "");
-                if (!inputValue) {
-                    return false;
-                } else if (searchCaseInsensitive) {
-                    return childValue.toLowerCase().startsWith(inputValue.toLowerCase())
-                } else {
-                    return childValue.startsWith(inputValue);
-                }
-            }
-        }
-
-        return (
-            <PopoverWithTrigger
-                ref="popover"
-                className={className}
-                triggerElement={<SelectButton hasValue={!!value}>{selectedName}</SelectButton>}
-                triggerClasses={className}
-                verticalAttachments={["top"]}
-                isInitiallyOpen={isInitiallyOpen}
-            >
-                <div className="flex flex-column">
-                    { searchProp &&
-                        <input
-                            className="AdminSelect m1 flex-full"
-                            value={inputValue}
-                            onChange={(e) => this.setState({ inputValue: e.target.value })}
-                            autoFocus
-                        />
-                    }
-                    <div className="ColumnarSelector-column scroll-y" onClick={(e) => e.stopPropagation()}>
-                        {children.filter(filter).map(child =>
-                            React.cloneElement(child, {
-                                selected: this.isSelected(child.props.value),
-                                onClick: () => {
-                                    if (!child.props.disabled) {
-                                        onChange({ target: { value: child.props.value }});
-                                    }
-                                    this.refs.popover.close()
-                                }
-                            })
-                        )}
-                    </div>
-                </div>
-            </PopoverWithTrigger>
-        );
-    }
-}
-
-export const SelectButton = ({ hasValue, children }) =>
-    <div className={"AdminSelect flex align-center " + (!hasValue ? " text-grey-3" : "")}>
-        <span className="AdminSelect-content mr1">{children}</span>
-        <Icon className="AdminSelect-chevron flex-align-right" name="chevrondown" size={12} />
-    </div>
-
-SelectButton.propTypes = {
-    hasValue: PropTypes.bool,
+    // one of these is required
+    options: PropTypes.any,
+    sections: PropTypes.any,
     children: PropTypes.any,
-};
 
-export class Option extends Component {
-    static propTypes = {
-        children:   PropTypes.any,
-        selected:   PropTypes.bool,
-        disabled:   PropTypes.bool,
-        onClick:    PropTypes.func,
-        icon:       PropTypes.string,
-        iconColor:  PropTypes.string,
-        iconSize:   PropTypes.number,
-    };
+    value: PropTypes.any.isRequired,
+    onChange: PropTypes.func.isRequired,
+    multiple: PropTypes.bool,
+    placeholder: PropTypes.string,
 
-    render() {
-        const { children, selected, disabled, icon, iconColor, iconSize, onClick } = this.props;
-        return (
-            <div
-                onClick={onClick}
-                className={cx("ColumnarSelector-row flex align-center cursor-pointer no-decoration relative", {
-                    "ColumnarSelector-row--selected": selected,
-                    "disabled": disabled
-                })}
-            >
-                <Icon name="check" size={14} style={{ position: 'absolute' }} />
-                { icon &&
-                    <Icon
-                        name={icon}
-                        size={iconSize}
-                        style={{
-                            position: 'absolute',
-                            color: iconColor,
-                            visibility: !selected ? "visible" : "hidden"
-                        }}
-                    />
-                }
-                <span className="ml4">{children}</span>
-            </div>
-        );
+    // PopoverWithTrigger props
+    isInitiallyOpen: PropTypes.bool,
+
+    // AccordianList props
+    searchProp: PropTypes.string,
+    searchCaseInsensitive: PropTypes.bool,
+    searchFuzzy: PropTypes.bool,
+
+    optionNameFn: PropTypes.func,
+    optionValueFn: PropTypes.func,
+    optionDescriptionFn: PropTypes.func,
+    optionSectionFn: PropTypes.func,
+    optionDisabledFn: PropTypes.func,
+    optionIconFn: PropTypes.func,
+  };
+
+  static defaultProps = {
+    optionNameFn: option => option.children || option.name,
+    optionValueFn: option => option.value,
+    optionDescriptionFn: option => option.description,
+    optionDisabledFn: option => option.disabled,
+    optionIconFn: option => option.icon,
+  };
+
+  constructor(props) {
+    super(props);
+
+    // reselect selectors
+    const _getValue = props => props.value;
+    const _getValues = createSelector(
+      [_getValue],
+      value => (Array.isArray(value) ? value : [value]),
+    );
+    const _getValuesSet = createSelector(
+      [_getValues],
+      values => new Set(values),
+    );
+    this._getValues = () => _getValues(this.props);
+    this._getValuesSet = () => _getValuesSet(this.props);
+  }
+
+  _getSections() {
+    // normalize `children`/`options` into same format as `sections`
+    const { children, sections, options } = this.props;
+    if (children) {
+      const optionToItem = option => option.props;
+      const first = Array.isArray(children) ? children[0] : children;
+      if (first && first.type === OptionSection) {
+        return React.Children.map(children, child => ({
+          ...child.props,
+          items: React.Children.map(child.props.children, optionToItem),
+        }));
+      } else if (first && first.type === Option) {
+        return [{ items: React.Children.map(children, optionToItem) }];
+      }
+    } else if (options) {
+      if (this.props.optionSectionFn) {
+        return _.chain(options)
+          .groupBy(this.props.optionSectionFn)
+          .pairs()
+          .map(([section, items]) => ({ name: section, items }))
+          .value();
+      } else {
+        return [{ items: options }];
+      }
+    } else if (sections) {
+      return sections;
     }
+    return [];
+  }
+
+  itemIsSelected = option => {
+    const optionValue = this.props.optionValueFn(option);
+    return this._getValuesSet().has(optionValue);
+  };
+
+  itemIsClickable = option => !this.props.optionDisabledFn(option);
+
+  handleChange = option => {
+    const { multiple, onChange } = this.props;
+    const optionValue = this.props.optionValueFn(option);
+    let value;
+    if (multiple) {
+      const values = this._getValues();
+      value = this.itemIsSelected(option)
+        ? values.filter(value => value !== optionValue)
+        : [...values, optionValue];
+    } else {
+      value = optionValue;
+    }
+    onChange({ target: { value } });
+    if (!multiple) {
+      this._popover.close();
+    }
+  };
+
+  renderItemIcon = item => {
+    if (this.itemIsSelected(item)) {
+      return (
+        <Icon
+          name="check"
+          size={14}
+          color={color("text-dark")}
+          style={{ minWidth: MIN_ICON_WIDTH }}
+        />
+      );
+    }
+    const icon = this.props.optionIconFn(item);
+    if (icon) {
+      return (
+        <Icon
+          name={icon}
+          size={item.iconSize || 18}
+          color={item.iconColor || color("text-dark")}
+          style={{ minWidth: MIN_ICON_WIDTH }}
+        />
+      );
+    }
+    return <span style={{ minWidth: MIN_ICON_WIDTH }} />;
+  };
+
+  render() {
+    const {
+      className,
+      placeholder,
+      searchProp,
+      searchCaseInsensitive,
+      searchFuzzy,
+      isInitiallyOpen,
+    } = this.props;
+
+    const sections = this._getSections();
+    const selectedNames = sections
+      .map(section =>
+        section.items.filter(this.itemIsSelected).map(this.props.optionNameFn),
+      )
+      .flat()
+      .filter(n => n);
+
+    return (
+      <PopoverWithTrigger
+        ref={ref => (this._popover = ref)}
+        triggerElement={
+          <SelectButton
+            className="full-width"
+            hasValue={selectedNames.length > 0}
+          >
+            {selectedNames.length > 0
+              ? selectedNames.map((name, index) => (
+                  <span key={index}>
+                    {name}
+                    {index < selectedNames.length - 1 ? ", " : ""}
+                  </span>
+                ))
+              : placeholder}
+          </SelectButton>
+        }
+        triggerClasses={cx("flex", className)}
+        isInitiallyOpen={isInitiallyOpen}
+        verticalAttachments={["top", "bottom"]}
+        // keep the popover from jumping around one its been opened,
+        // this can happen when filtering items via search
+        pinInitialAttachment
+      >
+        <AccordionList
+          sections={sections}
+          className="MB-Select text-brand"
+          alwaysExpanded
+          itemIsSelected={this.itemIsSelected}
+          itemIsClickable={this.itemIsClickable}
+          renderItemName={this.props.optionNameFn}
+          renderItemDescription={this.props.optionDescriptionFn}
+          renderItemIcon={this.renderItemIcon}
+          onChange={this.handleChange}
+          searchable={!!searchProp}
+          searchProp={searchProp}
+          searchCaseInsensitive={searchCaseInsensitive}
+          searchFuzzy={searchFuzzy}
+        />
+      </PopoverWithTrigger>
+    );
+  }
 }
+export class OptionSection extends Component {
+  static propTypes = {
+    name: PropTypes.any,
+    icon: PropTypes.any,
+    children: PropTypes.any.isRequired,
+  };
+  render() {
+    return null;
+  }
+}
+export class Option extends Component {
+  static propTypes = {
+    value: PropTypes.any.isRequired,
 
-class LegacySelect extends Component {
-    static propTypes = {
-        value: PropTypes.any,
-        values: PropTypes.array,
-        options: PropTypes.array.isRequired,
-        disabledOptionIds: PropTypes.array,
-        placeholder: PropTypes.string,
-        emptyPlaceholder: PropTypes.string,
-        onChange: PropTypes.func,
-        optionNameFn: PropTypes.func,
-        optionValueFn: PropTypes.func,
-        className: PropTypes.string,
-        isInitiallyOpen: PropTypes.bool,
-        disabled: PropTypes.bool,
-        //TODO: clean up hardcoded "AdminSelect" class on trigger to avoid this workaround
-        triggerClasses: PropTypes.string
-    };
+    // one of these two is required
+    name: PropTypes.any,
+    children: PropTypes.any,
 
-    static defaultProps = {
-        placeholder: "",
-        emptyPlaceholder: "Nothing to select",
-        disabledOptionIds: [],
-        optionNameFn: (option) => option.name,
-        optionValueFn: (option) => option,
-        isInitiallyOpen: false,
-    };
-
-    toggle() {
-        this.refs.popover.toggle();
-    }
-
-    render() {
-        const { className, value, values, onChange, options, disabledOptionIds, optionNameFn, optionValueFn, placeholder, emptyPlaceholder, isInitiallyOpen, disabled } = this.props;
-
-        var selectedName = value ?
-            optionNameFn(value) :
-            options && options.length > 0 ?
-                placeholder :
-                emptyPlaceholder;
-
-        var triggerElement = (
-            <div className={cx("flex align-center", !value && (!values || values.length === 0) ? " text-grey-2" : "")}>
-                { values && values.length !== 0 ?
-                    values
-                        .map(value => optionNameFn(value))
-                        .sort()
-                        .map((name, index) => <span key={index} className="mr1">{`${name}${index !== (values.length - 1) ? ',   ' : ''}`}</span>) :
-                    <span className="mr1">{selectedName}</span>
-                }
-                <Icon className="flex-align-right" name="chevrondown" size={12}/>
-            </div>
-        );
-
-        var sections = {};
-        options.forEach(function (option) {
-            var sectionName = option.section || "";
-            sections[sectionName] = sections[sectionName] || { title: sectionName || undefined, items: [] };
-            sections[sectionName].items.push(option);
-        });
-        sections = Object.keys(sections).map((sectionName) => sections[sectionName]);
-
-        var columns = [
-            {
-                selectedItem: value,
-                selectedItems: values,
-                sections: sections,
-                disabledOptionIds: disabledOptionIds,
-                itemTitleFn: optionNameFn,
-                itemDescriptionFn: (item) => item.description,
-                itemSelectFn: (item) => {
-                    onChange(optionValueFn(item));
-                    if (!values) {
-                        this.toggle();
-                    }
-                }
-            }
-        ];
-
-        const disablePopover = disabled || !options || options.length === 0;
-
-        return (
-            <PopoverWithTrigger
-                ref="popover"
-                className={className}
-                triggerElement={triggerElement}
-                triggerClasses={this.props.triggerClasses || cx("AdminSelect", this.props.className)}
-                isInitiallyOpen={isInitiallyOpen}
-                disabled={disablePopover}
-            >
-                <div onClick={(e) => e.stopPropagation()}>
-                    <ColumnarSelector
-                        columns={columns}
-                    />
-                </div>
-            </PopoverWithTrigger>
-        );
-    }
+    icon: PropTypes.any,
+    disabled: PropTypes.bool,
+  };
+  render() {
+    return null;
+  }
 }
